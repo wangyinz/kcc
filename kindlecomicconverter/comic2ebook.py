@@ -57,6 +57,7 @@ from . import comicarchive
 from . import pdfjpgextract
 from . import dualmetafix
 from . import metadata
+from . import epubtoc
 from . import kindle
 from . import __version__
 
@@ -226,37 +227,81 @@ def buildHTML(path, imgfile, imgfilepath, imgfile2=None):
     return path, imgfile
 
 
-def buildNCX(dstdir, title, chapters, chapternames):
+def _chapter_target(dstdir, chapter):
+    folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\')
+    filename = getImageFileName(os.path.join(folder, chapter[1]))
+    return filename[0].replace('\\', '/') + '.xhtml'
+
+
+def _toc_tree(entries):
+    """Convert flat (level, title, chapter) entries into a nested tree."""
+    root = []
+    stack = []
+    for level, title, chapter in entries:
+        level = max(1, int(level))
+        if not stack:
+            level = 1
+        elif level > len(stack) + 1:
+            level = len(stack) + 1
+        stack = stack[:level - 1]
+        node = {'title': title, 'chapter': chapter, 'children': []}
+        if level == 1:
+            root.append(node)
+        else:
+            stack[level - 2]['children'].append(node)
+        stack.append(node)
+    return root
+
+
+def buildNCX(dstdir, title, chapters, chapternames, preserved_toc=None):
     ncxfile = os.path.join(dstdir, 'OEBPS', 'toc.ncx')
     f = open(ncxfile, "w", encoding='UTF-8')
+    depth = max((entry[0] for entry in preserved_toc), default=1) if preserved_toc else 1
     f.writelines(["<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n",
                   f"<ncx version=\"2005-1\" xml:lang=\"{options.language}\" xmlns=\"http://www.daisy.org/z3986/2005/ncx/\">\n",
                   "<head>\n",
                   "<meta name=\"dtb:uid\" content=\"urn:uuid:", options.uuid, "\"/>\n",
-                  "<meta name=\"dtb:depth\" content=\"1\"/>\n",
+                  f"<meta name=\"dtb:depth\" content=\"{depth}\"/>\n",
                   "<meta name=\"dtb:totalPageCount\" content=\"0\"/>\n",
                   "<meta name=\"dtb:maxPageNumber\" content=\"0\"/>\n",
                   "<meta name=\"generated\" content=\"true\"/>\n",
                   "</head>\n",
                   "<docTitle><text>", hescape(title), "</text></docTitle>\n",
                   "<navMap>\n"])
-    for chapter in chapters:
-        folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\\\')
-        filename = getImageFileName(os.path.join(folder, chapter[1]))
-        navID = folder.replace('/', '_').replace('\\', '_')
-        if options.comicinfo_chapters:
-            title = chapternames[chapter[1]]
-            navID = filename[0].replace('/', '_').replace('\\', '_')
-        elif os.path.basename(folder) != "Text":
-            title = chapternames[os.path.basename(folder)]
-        f.write("<navPoint id=\"" + navID + "\"><navLabel><text>" +
-                hescape(title) + "</text></navLabel><content src=\"" + filename[0].replace("\\", "/") +
-                ".xhtml\"/></navPoint>\n")
+
+    if preserved_toc:
+        counter = [0]
+
+        def write_nodes(nodes):
+            for node in nodes:
+                counter[0] += 1
+                nav_id = f"toc_{counter[0]}"
+                target = _chapter_target(dstdir, node['chapter'])
+                f.write(f'<navPoint id="{nav_id}"><navLabel><text>{hescape(node["title"])}</text></navLabel>'
+                        f'<content src="{target}"/>')
+                write_nodes(node['children'])
+                f.write('</navPoint>\n')
+
+        write_nodes(_toc_tree(preserved_toc))
+    else:
+        for chapter in chapters:
+            folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\')
+            filename = getImageFileName(os.path.join(folder, chapter[1]))
+            navID = folder.replace('/', '_').replace('\\', '_')
+            chapter_title = title
+            if options.comicinfo_chapters:
+                chapter_title = chapternames[chapter[1]]
+                navID = filename[0].replace('/', '_').replace('\\', '_')
+            elif os.path.basename(folder) != "Text":
+                chapter_title = chapternames[os.path.basename(folder)]
+            f.write("<navPoint id=\"" + navID + "\"><navLabel><text>" +
+                    hescape(chapter_title) + "</text></navLabel><content src=\"" + filename[0].replace("\\", "/") +
+                    ".xhtml\"/></navPoint>\n")
     f.write("</navMap>\n</ncx>")
     f.close()
 
 
-def buildNAV(dstdir, title, chapters, chapternames):
+def buildNAV(dstdir, title, chapters, chapternames, preserved_toc=None):
     navfile = os.path.join(dstdir, 'OEBPS', 'nav.xhtml')
     f = open(navfile, "w", encoding='UTF-8')
     f.writelines(["<?xml version=\"1.0\" encoding=\"utf-8\"?>\n",
@@ -269,26 +314,48 @@ def buildNAV(dstdir, title, chapters, chapternames):
                   "<body>\n",
                   "<nav xmlns:epub=\"http://www.idpf.org/2007/ops\" epub:type=\"toc\" id=\"toc\">\n",
                   "<ol>\n"])
-    for chapter in chapters:
-        folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\\\')
-        filename = getImageFileName(os.path.join(folder, chapter[1]))
-        if options.comicinfo_chapters:
-            title = chapternames[chapter[1]]
-        elif os.path.basename(folder) != "Text":
-            title = chapternames[os.path.basename(folder)]
-        f.write("<li><a href=\"" + filename[0].replace("\\", "/") + ".xhtml\">" + hescape(title) + "</a></li>\n")
+
+    if preserved_toc:
+        def write_nodes(nodes):
+            for node in nodes:
+                target = _chapter_target(dstdir, node['chapter'])
+                f.write(f'<li><a href="{target}">{hescape(node["title"])}</a>')
+                if node['children']:
+                    f.write('<ol>\n')
+                    write_nodes(node['children'])
+                    f.write('</ol>\n')
+                f.write('</li>\n')
+
+        write_nodes(_toc_tree(preserved_toc))
+    else:
+        for chapter in chapters:
+            folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\')
+            filename = getImageFileName(os.path.join(folder, chapter[1]))
+            chapter_title = title
+            if options.comicinfo_chapters:
+                chapter_title = chapternames[chapter[1]]
+            elif os.path.basename(folder) != "Text":
+                chapter_title = chapternames[os.path.basename(folder)]
+            f.write("<li><a href=\"" + filename[0].replace("\\", "/") + ".xhtml\">" + hescape(chapter_title) + "</a></li>\n")
+
     f.writelines(["</ol>\n",
                   "</nav>\n",
                   "<nav epub:type=\"page-list\">\n",
                   "<ol>\n"])
-    for chapter in chapters:
-        folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\\\')
-        filename = getImageFileName(os.path.join(folder, chapter[1]))
-        if options.comicinfo_chapters:
-            title = chapternames[chapter[1]]
-        elif os.path.basename(folder) != "Text":
-            title = chapternames[os.path.basename(folder)]
-        f.write("<li><a href=\"" + filename[0].replace("\\", "/") + ".xhtml\">" + hescape(title) + "</a></li>\n")
+    if preserved_toc:
+        for _, chapter_title, chapter in preserved_toc:
+            target = _chapter_target(dstdir, chapter)
+            f.write(f'<li><a href="{target}">{hescape(chapter_title)}</a></li>\n')
+    else:
+        for chapter in chapters:
+            folder = chapter[0].replace(os.path.join(dstdir, 'OEBPS'), '').lstrip('/').lstrip('\\')
+            filename = getImageFileName(os.path.join(folder, chapter[1]))
+            chapter_title = title
+            if options.comicinfo_chapters:
+                chapter_title = chapternames[chapter[1]]
+            elif os.path.basename(folder) != "Text":
+                chapter_title = chapternames[os.path.basename(folder)]
+            f.write("<li><a href=\"" + filename[0].replace("\\", "/") + ".xhtml\">" + hescape(chapter_title) + "</a></li>\n")
     f.write("</ol>\n</nav>\n</body>\n</html>")
     f.close()
 
@@ -645,8 +712,17 @@ def buildEPUB(path, chapternames, tomenumber, ischunked, cover: image.Cover, ori
             filename = filelist[pageid][1]
             chapterlist.append((filelist[pageid][0].replace('Images', 'Text'), filename))
             chapternames[filename] = aChapter[1]
-    buildNCX(path, options.title, chapterlist, chapternames)
-    buildNAV(path, options.title, chapterlist, chapternames)
+    preserved_toc = None
+    if options.preserve_epub_toc and options.epub_toc_entries:
+        mapped_toc = epubtoc.map_toc_to_sequence(options.epub_toc_entries, [entry[1] for entry in filelist])
+        if mapped_toc:
+            preserved_toc = []
+            for level, chapter_title, position in mapped_toc:
+                chapter = (filelist[position][0].replace('Images', 'Text'), filelist[position][1])
+                preserved_toc.append((level, chapter_title, chapter))
+
+    buildNCX(path, options.title, chapterlist, chapternames, preserved_toc)
+    buildNAV(path, options.title, chapterlist, chapternames, preserved_toc)
     buildOPF(path, options.title, filelist, originalpath, cover)
 
 
@@ -660,6 +736,7 @@ def buildPDF(path, title, job_progress='', cover=None, output_file=None):
     with pymupdf.open() as doc:
         doc.set_metadata({'title': title, 'author': options.authors[0]})
         # Stream images to PDF
+        page_files = []
         for root, dirs, files in os.walk(os.path.join(path, "OEBPS", "Images")):
             files.sort(key=OS_SORT_KEY)
             dirs.sort(key=OS_SORT_KEY)
@@ -667,6 +744,13 @@ def buildPDF(path, title, job_progress='', cover=None, output_file=None):
                 w, h = Image.open(os.path.join(root, file)).size
                 page = doc.new_page(width=w, height=h)
                 page.insert_image(page.rect, filename=os.path.join(root, file))
+                page_files.append(file)
+
+        if options.preserve_epub_toc and options.epub_toc_entries:
+            mapped_toc = epubtoc.map_toc_to_sequence(options.epub_toc_entries, page_files)
+            if mapped_toc:
+                doc.set_toc([[level, chapter_title, position + 1]
+                             for level, chapter_title, position in mapped_toc])
 
         # determine output filename if not provided
         if output_file is None:
@@ -1022,6 +1106,7 @@ def getWorkFolder(afile, options, workdir=None):
                     for manifest_item in opf.findall(".//*[@media-type='application/xhtml+xml']"):
                         manifest_dict[manifest_item.attrib.get('id')] = manifest_item.attrib.get('href')
                     ordered_image_paths = []
+                    page_to_image_index = {}
                     for i, spine_item in enumerate(spine):
                         try:
                             page_path = os.path.join(os.path.dirname(opf_path), manifest_dict[spine_item])
@@ -1049,7 +1134,20 @@ def getWorkFolder(afile, options, workdir=None):
                                         pass
                         # TODO empty image
                         if img_path:
+                            page_to_image_index[page_path] = len(ordered_image_paths)
                             ordered_image_paths.append(img_path)
+
+                    if options.preserve_epub_toc:
+                        try:
+                            options.epub_toc_entries = epubtoc.read_epub_toc(opf_path, page_to_image_index)
+                            if options.epub_toc_entries:
+                                print(f"Preserving {len(options.epub_toc_entries)} EPUB TOC entries.")
+                            else:
+                                print("WARNING: Preserve EPUB TOC enabled, but no mappable TOC entries were found.")
+                        except Exception as err:
+                            options.epub_toc_entries = []
+                            print(f"WARNING: Failed to read EPUB TOC: {err}")
+
                     # fallback if naive spine extraction fails
                     if not ordered_image_paths:
                         return workdir
@@ -1550,6 +1648,8 @@ def makeParser():
                                     help="Do not modify image and ignore any profile or processing option")
     processing_options.add_argument("--legacyextract", action="store_true", dest="legacyextract", default=False,
                                     help="Use the legacy PDF/EPUB image extraction method from older KCC versions")
+    processing_options.add_argument("--preserve-epub-toc", action="store_true", dest="preserve_epub_toc", default=False,
+                                    help="Preserve EPUB NAV/NCX table of contents when rebuilding EPUB/MOBI/PDF output")
     processing_options.add_argument("--pdfwidth", action="store_true", dest="pdfwidth", default=False,
                                     help="Render vector PDFs to device width instead of height.")
     processing_options.add_argument("--smartcovercrop", action="store_true", dest="smartcovercrop", default=False,
@@ -1892,6 +1992,7 @@ def makeBook(source, fusion_cover_path=None, qtgui=None, job_progress=''):
     if not options.filefusion:
         checkPre('LLL-')
     print(f"{job_progress}Preparing source images...")
+    options.epub_toc_entries = []
     path = getWorkFolder(source, options)
     print(f"{job_progress}Checking images...")
     _, ext = os.path.splitext(source)
