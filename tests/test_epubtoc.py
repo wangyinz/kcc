@@ -1,9 +1,14 @@
 import os
 import tempfile
 import unittest
+import xml.etree.ElementTree as ET
+from io import BytesIO
 from pathlib import Path
+from zipfile import ZIP_STORED, ZipFile
 
-from kindlecomicconverter import epubtoc
+from PIL import Image
+
+from kindlecomicconverter import comic2ebook, epubtoc
 
 
 class EpubTocTests(unittest.TestCase):
@@ -109,6 +114,76 @@ class EpubTocTests(unittest.TestCase):
             (1, 'Chapter 2', 0),
             (1, 'Volume 2', 2),
         ])
+
+
+    def test_end_to_end_epub_output_keeps_nav_toc(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / 'source.epub'
+            output = root / 'output.epub'
+
+            image_data = []
+            for value in (230, 200, 170):
+                stream = BytesIO()
+                Image.new('RGB', (40, 60), (value, value, value)).save(stream, format='JPEG')
+                image_data.append(stream.getvalue())
+
+            container_xml = '''<?xml version="1.0"?>
+                <container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0">
+                  <rootfiles><rootfile full-path="OEBPS/content.opf"
+                    media-type="application/oebps-package+xml"/></rootfiles>
+                </container>'''
+            opf = '''<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                <manifest>
+                  <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>
+                  <item id="p1" href="Text/p1.xhtml" media-type="application/xhtml+xml"/>
+                  <item id="p2" href="Text/p2.xhtml" media-type="application/xhtml+xml"/>
+                  <item id="p3" href="Text/p3.xhtml" media-type="application/xhtml+xml"/>
+                  <item id="i1" href="Images/i1.jpg" media-type="image/jpeg"/>
+                  <item id="i2" href="Images/i2.jpg" media-type="image/jpeg"/>
+                  <item id="i3" href="Images/i3.jpg" media-type="image/jpeg"/>
+                </manifest>
+                <spine><itemref idref="p1"/><itemref idref="p2"/><itemref idref="p3"/></spine>
+              </package>'''
+            nav = '''<html xmlns="http://www.w3.org/1999/xhtml"
+                     xmlns:epub="http://www.idpf.org/2007/ops"><body>
+                     <nav epub:type="toc"><ol>
+                       <li><a href="Text/p1.xhtml">Volume 1</a><ol>
+                         <li><a href="Text/p2.xhtml">Chapter 1</a></li>
+                       </ol></li>
+                       <li><a href="Text/p3.xhtml">Volume 2</a></li>
+                     </ol></nav></body></html>'''
+
+            with ZipFile(source, 'w') as archive:
+                archive.writestr('mimetype', 'application/epub+zip', ZIP_STORED)
+                archive.writestr('META-INF/container.xml', container_xml)
+                archive.writestr('OEBPS/content.opf', opf)
+                archive.writestr('OEBPS/nav.xhtml', nav)
+                for index in range(1, 4):
+                    archive.writestr(
+                        f'OEBPS/Text/p{index}.xhtml',
+                        f'''<html xmlns="http://www.w3.org/1999/xhtml"><body>
+                            <img src="../Images/i{index}.jpg"/></body></html>''')
+                    archive.writestr(f'OEBPS/Images/i{index}.jpg', image_data[index - 1])
+
+            result = comic2ebook.main([
+                '--noprocessing',
+                '--preserve-epub-toc',
+                '--format', 'EPUB',
+                '--output', str(output),
+                str(source),
+            ])
+            self.assertEqual(result, 0)
+            self.assertTrue(output.exists())
+
+            with ZipFile(output) as archive:
+                output_nav = ET.fromstring(archive.read('OEBPS/nav.xhtml'))
+            labels = [
+                ' '.join(''.join(anchor.itertext()).split())
+                for anchor in output_nav.findall('.//{*}nav[@id="toc"]//{*}a')
+            ]
+            self.assertEqual(labels, ['Volume 1', 'Chapter 1', 'Volume 2'])
+
 
 
 if __name__ == '__main__':
