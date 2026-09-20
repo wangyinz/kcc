@@ -235,6 +235,11 @@ class Ui_mainWindow(object):
 
         self.gridLayout_2.addWidget(self.legacyExtractBox, 3, 1, 1, 1)
 
+        self.preserveEpubTocBox = QCheckBox(self.optionWidget)
+        self.preserveEpubTocBox.setObjectName(u"preserveEpubTocBox")
+
+        self.gridLayout_2.addWidget(self.preserveEpubTocBox, 11, 2, 1, 1)
+
         self.outputSplit = QCheckBox(self.optionWidget)
         self.outputSplit.setObjectName(u"outputSplit")
 
@@ -711,6 +716,10 @@ class Ui_mainWindow(object):
 "Use if standard extraction fails for whatever reason.", None))
 #endif // QT_CONFIG(tooltip)
         self.legacyExtractBox.setText(QCoreApplication.translate("mainWindow", u"Legacy Extract", None))
+#if QT_CONFIG(tooltip)
+        self.preserveEpubTocBox.setToolTip(QCoreApplication.translate("mainWindow", u"Preserve the source EPUB NAV/NCX table of contents and remap its entries after image processing and output splitting.\n\nApplies only to EPUB input.", None))
+#endif // QT_CONFIG(tooltip)
+        self.preserveEpubTocBox.setText(QCoreApplication.translate("mainWindow", u"Preserve EPUB TOC", None))
 #if QT_CONFIG(tooltip)
         self.outputSplit.setToolTip(QCoreApplication.translate("mainWindow", u"<html><head/><body><p style='white-space:pre'><span style=\" font-weight:600; text-decoration: underline;\">Unchecked - Automatic mode<br/></span>The output will be split automatically.</p><p style='white-space:pre'><span style=\" font-weight:600; text-decoration: underline;\">Checked - Volume mode<br/></span>Every subdirectory will be considered as a separate volume.</p></body></html>", None))
 #endif // QT_CONFIG(tooltip)
