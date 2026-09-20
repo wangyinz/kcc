@@ -319,6 +319,8 @@ def get_options():
         options.noprocessing = True
     if GUI.legacyExtractBox.isChecked():
         options.legacyextract = True
+    if GUI.preserveEpubTocBox.isChecked():
+        options.preserve_epub_toc = True
     if GUI.pdfWidthBox.isChecked():
         options.pdfwidth = True
     if GUI.smartCoverCropBox.isChecked():
@@ -1310,6 +1312,7 @@ class KCCGUI(KCC_ui.Ui_mainWindow):
                                            'eraseRainbowBox': GUI.eraseRainbowBox.checkState(),
                                            'disableProcessingBox': GUI.disableProcessingBox.checkState(),
                                            'legacyExtractBox': GUI.legacyExtractBox.checkState(),
+                                           'preserveEpubTocBox': GUI.preserveEpubTocBox.checkState(),
                                            'pdfWidthBox': GUI.pdfWidthBox.checkState(),
                                            'smartCoverCropBox': GUI.smartCoverCropBox.checkState(),
                                            'coverFillBox': GUI.coverFillBox.checkState(),
