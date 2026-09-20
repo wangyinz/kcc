@@ -290,6 +290,7 @@ MAIN:
 PROCESSING:
   -n, --noprocessing    Do not modify image and ignore any profile or processing option
   --legacyextract       Use legacy PDF/EPUB image extraction method from earlier KCC versions.
+  --preserve-epub-toc  Preserve EPUB NAV/NCX table of contents when rebuilding EPUB/MOBI/PDF output.
   --pdfwidth            Render vector PDFs based on device width instead of height.
   -u, --upscale         Resize images smaller than device's resolution
   -s, --stretch         Stretch images to device's resolution
@@ -359,6 +360,12 @@ OTHER:
   -h, --help            Show this help message and exit
 
 ```
+
+### Preserve EPUB table of contents
+
+For EPUB input, enable **Preserve EPUB TOC** in the GUI or pass `--preserve-epub-toc` on the command line. KCC reads the source EPUB3 NAV or EPUB2 NCX, maps each entry to the source spine page, and remaps those entries after image cropping, spread splitting, and automatic output chunking. EPUB/MOBI output receives a rebuilt Kindle-compatible NAV/NCX; PDF output receives PDF outline bookmarks. Nested TOC levels are preserved where possible.
+
+The option applies only to EPUB input and uses the standard EPUB extraction path (not Legacy Extract).
 
 ### Standalone `kcc-c2p.py` usage:
 
