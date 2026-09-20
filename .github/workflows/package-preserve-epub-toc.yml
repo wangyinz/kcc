@@ -52,7 +52,7 @@ jobs:
     strategy:
       matrix:
         os: [macos-15-intel, macos-14]
-    runs-on: \${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
     env:
       MACOSX_DEPLOYMENT_TARGET: '14.0'
     steps:
@@ -73,5 +73,5 @@ jobs:
         run: python setup.py build_binary
       - uses: actions/upload-artifact@v7
         with:
-          name: KCC-preserve-epub-toc-macos-\${{ runner.arch }}
+          name: KCC-preserve-epub-toc-macos-${{ runner.arch }}
           path: dist/*.dmg
