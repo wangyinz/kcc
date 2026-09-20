@@ -1,5 +1,10 @@
 # CHANGELOG
 
+#### 11.3.2+epubtoc1 (fork)
+* Add optional preservation of EPUB3 NAV / EPUB2 NCX TOC entries through KCC image processing.
+* Remap preserved TOC entries after spread splitting and automatic output chunking.
+* Write preserved TOC to EPUB/MOBI navigation and PDF outline bookmarks.
+
 
 #### 5.6.2:
 * build pipeline : drop pypi by @darodi in [#465](https://github.com/ciromattia/kcc/pull/465)
